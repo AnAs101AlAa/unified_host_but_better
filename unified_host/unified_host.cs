@@ -36,64 +36,82 @@ namespace unified_host
 
         private void InitializeCustomComponents()
         {
+            //--------------------the following is for file browsing and previewing-------------------//
+
+            //next page button
             nextButton = new Button();
             nextButton.Text = "Next";
             nextButton.BackColor = Color.White;
             nextButton.Location = new Point(790, 580);
             nextButton.Click += new EventHandler(NextButton_Click);
 
-            browseButton = new Button();
-            browseButton.Text = "Browse";
-            browseButton.BackColor = Color.White;
-            browseButton.Location = new Point(870, 10);
-            browseButton.Click += new EventHandler(BrowseButton_Click);
-
+            //previous page button
             prevButton = new Button();
             prevButton.Text = "Previous";
             prevButton.BackColor = Color.White;
             prevButton.Location = new Point(710, 580);
             prevButton.Click += new EventHandler(PrevButton_Click);
 
+            //browse file to open button
+            browseButton = new Button();
+            browseButton.Text = "Browse";
+            browseButton.BackColor = Color.White;
+            browseButton.Location = new Point(870, 10);
+            browseButton.Click += new EventHandler(BrowseButton_Click);
+
+            //clear file previewed button
             clearButton = new Button();
             clearButton.Text = "clear file";
             clearButton.BackColor = Color.White;
             clearButton.Location = new Point(870, 580);
             clearButton.Click += new EventHandler(ClearButton_Click);
 
+            //display file content field
             fileContentTextBox = new TextBox();
             fileContentTextBox.Multiline = true;
             fileContentTextBox.ReadOnly = true;
             fileContentTextBox.ScrollBars = ScrollBars.Both;
             fileContentTextBox.Location = new Point(40, 80);
-
+            
+            //lines to display combo box
             linesToDisplayComboBox = new ComboBox();
             linesToDisplayComboBox.Location = new Point(110, 580);
             linesToDisplayComboBox.Items.AddRange(new object[] { "10", "20", "50", "All" });
             linesToDisplayComboBox.SelectedIndex = 0;
             linesToDisplayComboBox.SelectedIndexChanged += new EventHandler(LinesToDisplayComboBox_SelectedIndexChanged);
 
+            //current page number indicator
             currentPageIndicator = new Label();
             currentPageIndicator.Location = new Point(35, 580);
             currentPageIndicator.Text = "Page: 1";
 
+            //--------------------the following is for port operations and starting boot------------------------------//
+
+            //port input field to coonect to
             portInput = new TextBox();
             portInput.Location = new Point(10, 10);
             portInput.Size = new Size(100, 20);
 
+            //connect on selected port
             confirmPort = new Button();
             confirmPort.Text = "Connect";
             confirmPort.Location = new Point(120, 10);
             confirmPort.Click += new EventHandler(ConfirmPort_Click);
 
+            //start booting
             start = new Button();
             start.Text = "start";
             start.Location = new Point(200, 10);
             start.Click += new EventHandler(startcomm);
 
+            //current booting and port status
             connectionStatus = new Label();
             connectionStatus.Location = new Point(10, 40);
             connectionStatus.Size = new Size(200, 20);
             connectionStatus.Text = "Disconnected";
+
+
+            //-------------------------------adding all components to the form----------------------------------//
 
             this.Controls.Add(connectionStatus);
             this.Controls.Add(portInput);
@@ -106,10 +124,39 @@ namespace unified_host
             this.Controls.Add(currentPageIndicator);
             this.Controls.Add(clearButton);
             this.Controls.Add(browseButton);
-
             defaultFont = fileContentTextBox.Font;
         }
 
+        public void UpdateConnectionStatus(string status)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<string>(UpdateConnectionStatus), status);
+            }
+            else
+            {
+                connectionStatus.Text = status;
+            }
+        }
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.Add)
+            {
+                fileContentTextBox.Font = new Font(fileContentTextBox.Font.FontFamily, fileContentTextBox.Font.Size + 2);
+            }
+            else if (e.Control && e.KeyCode == Keys.Subtract)
+            {
+                fileContentTextBox.Font = new Font(fileContentTextBox.Font.FontFamily, fileContentTextBox.Font.Size - 2);
+            }
+            else if (e.Control && e.KeyCode == Keys.D0)
+            {
+                fileContentTextBox.Font = defaultFont;
+            }
+        }
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            this.Form1_Resize(sender, e);
+        }
         private void Form1_Resize(object sender, EventArgs e)
         {
             fileContentTextBox.Size = new Size(this.ClientSize.Width - 80, this.ClientSize.Height - 170);
@@ -206,13 +253,6 @@ namespace unified_host
             string fileContent = string.Join(Environment.NewLine, fileLines.Skip(startLine).Take(endLine - startLine));
             fileContentTextBox.Text = fileContent;
         }
-
-        private void Form1_Load(object sender, EventArgs e)
-        {
-            this.Form1_Resize(sender, e);
-        }
-
-
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
             server = new socketServer(int.Parse(portInput.Text), this);
@@ -232,33 +272,6 @@ namespace unified_host
         private void startcomm(object sender, EventArgs e)
         {
 
-        }
-
-        public void UpdateConnectionStatus(string status)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<string>(UpdateConnectionStatus), status);
-            }
-            else
-            {
-                connectionStatus.Text = status;
-            }
-        }
-        private void Form1_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Control && e.KeyCode == Keys.Add)
-            {
-                fileContentTextBox.Font = new Font(fileContentTextBox.Font.FontFamily, fileContentTextBox.Font.Size + 2);
-            }
-            else if (e.Control && e.KeyCode == Keys.Subtract)
-            {
-                fileContentTextBox.Font = new Font(fileContentTextBox.Font.FontFamily, fileContentTextBox.Font.Size - 2);
-            }
-            else if (e.Control && e.KeyCode == Keys.D0)
-            {
-                fileContentTextBox.Font = defaultFont;
-            }
         }
     }
 }
