@@ -59,13 +59,29 @@ namespace unified_host
 
         public void sendMessage(byte[] message)
         {
+
             udpServer.Send(message, message.Length);
         }
 
-        public string receiveMessage()
+        public byte[] receiveMessage()
         {
             byte[] receivedBytes = udpServer.Receive(ref remoteEndPoint);
-            return Encoding.UTF8.GetString(receivedBytes);
+            return receivedBytes;
+        }
+        public bool request(byte[] messegeRequested, byte[] expectedAnswer)
+        {
+            int timer = 10000;
+            sendMessage(messegeRequested);
+            while (timer > 0) 
+            {
+                if (expectedAnswer==receiveMessage())
+                {
+                    return true;
+                }
+                sendMessage(messegeRequested);
+                timer--;
+            }
+            return false;
         }
     }
 }
