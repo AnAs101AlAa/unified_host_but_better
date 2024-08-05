@@ -1,18 +1,25 @@
+using System.Data;
+
 namespace unified_host
 {
     public partial class unified_host : Form
     {
         private Button nextButton;
         private Button prevButton;
+        private Button browseButton;
         private Button clearButton;
-        private ToolStrip portbar;
         private TextBox fileContentTextBox;
         private ComboBox linesToDisplayComboBox;
         private string[] fileLines;
         private int currentPage;
         private int linesPerPage;
         private Label currentPageIndicator;
-        private Font defaultFont; // Add a field to store the default font
+        private TextBox portInput;
+        private Button confirmPort;
+        private Label connectionStatus;
+        private Button start;
+        private socketServer server;
+        private Font defaultFont;
 
         public unified_host()
         {
@@ -32,40 +39,26 @@ namespace unified_host
             nextButton = new Button();
             nextButton.Text = "Next";
             nextButton.BackColor = Color.White;
-            nextButton.Location = new Point(380, 35);
+            nextButton.Location = new Point(790, 580);
             nextButton.Click += new EventHandler(NextButton_Click);
+
+            browseButton = new Button();
+            browseButton.Text = "Browse";
+            browseButton.BackColor = Color.White;
+            browseButton.Location = new Point(870, 10);
+            browseButton.Click += new EventHandler(BrowseButton_Click);
 
             prevButton = new Button();
             prevButton.Text = "Previous";
             prevButton.BackColor = Color.White;
-            prevButton.Location = new Point(300, 35);
+            prevButton.Location = new Point(710, 580);
             prevButton.Click += new EventHandler(PrevButton_Click);
 
             clearButton = new Button();
             clearButton.Text = "clear file";
             clearButton.BackColor = Color.White;
-            clearButton.Location = new Point(460, 35);
+            clearButton.Location = new Point(870, 580);
             clearButton.Click += new EventHandler(ClearButton_Click);
-
-            portbar = new ToolStrip();
-            portbar.Size = new Size(70, 20);
-            portbar.BackColor = Color.White;
-
-            ToolStripDropDownButton file = new ToolStripDropDownButton("File");
-            file.AccessibilityObject.Name = "File";
-            file.Size = new Size(40, 20);
-            ToolStripMenuItem open = new ToolStripMenuItem("open/Browse");
-            file.DropDownItems.Add(open);
-            portbar.Items.Add(file);
-            open.Click += new EventHandler(BrowseButton_Click);
-
-            ToolStripDropDownButton port = new ToolStripDropDownButton("Console");
-            port.AccessibilityObject.Name = "Console";
-            port.Size = new Size(100, 20);
-            ToolStripMenuItem connect = new ToolStripMenuItem("connect");
-            port.DropDownItems.Add(connect);
-            portbar.Items.Add(port);
-            connect.Click += new EventHandler(connectPortClick);
 
             fileContentTextBox = new TextBox();
             fileContentTextBox.Multiline = true;
@@ -74,35 +67,53 @@ namespace unified_host
             fileContentTextBox.Location = new Point(40, 80);
 
             linesToDisplayComboBox = new ComboBox();
-            linesToDisplayComboBox.Location = new Point(150, 35);
+            linesToDisplayComboBox.Location = new Point(110, 580);
             linesToDisplayComboBox.Items.AddRange(new object[] { "10", "20", "50", "All" });
             linesToDisplayComboBox.SelectedIndex = 0;
             linesToDisplayComboBox.SelectedIndexChanged += new EventHandler(LinesToDisplayComboBox_SelectedIndexChanged);
 
             currentPageIndicator = new Label();
-            currentPageIndicator.Location = new Point(35, 60);
+            currentPageIndicator.Location = new Point(35, 580);
             currentPageIndicator.Text = "Page: 1";
 
+            portInput = new TextBox();
+            portInput.Location = new Point(10, 10);
+            portInput.Size = new Size(100, 20);
+
+            confirmPort = new Button();
+            confirmPort.Text = "Connect";
+            confirmPort.Location = new Point(120, 10);
+            confirmPort.Click += new EventHandler(ConfirmPort_Click);
+
+            start = new Button();
+            start.Text = "start";
+            start.Location = new Point(200, 10);
+            start.Click += new EventHandler(startcomm);
+
+            connectionStatus = new Label();
+            connectionStatus.Location = new Point(10, 40);
+            connectionStatus.Size = new Size(200, 20);
+            connectionStatus.Text = "Disconnected";
+
+            this.Controls.Add(connectionStatus);
+            this.Controls.Add(portInput);
+            this.Controls.Add(confirmPort);
+            this.Controls.Add(start);
             this.Controls.Add(nextButton);
             this.Controls.Add(prevButton);
             this.Controls.Add(fileContentTextBox);
             this.Controls.Add(linesToDisplayComboBox);
             this.Controls.Add(currentPageIndicator);
             this.Controls.Add(clearButton);
-            this.Controls.Add(portbar);
+            this.Controls.Add(browseButton);
 
             defaultFont = fileContentTextBox.Font;
-        }
-
-        private void connectPortClick(object? sender, EventArgs e)
-        {
-            Form f = new connect();
-            f.Show();
         }
 
         private void Form1_Resize(object sender, EventArgs e)
         {
             fileContentTextBox.Size = new Size(this.ClientSize.Width - 80, this.ClientSize.Height - 170);
+            currentPageIndicator.Location = new Point(fileContentTextBox.Location.X, fileContentTextBox.Location.Y + 500);
         }
 
         private void ClearButton_Click(object sender, EventArgs e)
@@ -201,6 +212,39 @@ namespace unified_host
             this.Form1_Resize(sender, e);
         }
 
+
+        private async void ConfirmPort_Click(object sender, EventArgs e)
+        {
+            server = new socketServer(int.Parse(portInput.Text), this);
+            server.start();
+
+            if (server.isConnected())
+            {
+                UpdateConnectionStatus("client connected successfully");
+            }
+            else
+            {
+                UpdateConnectionStatus("client failed to connect");
+                server.stop();
+            }
+        }
+
+        private void startcomm(object sender, EventArgs e)
+        {
+
+        }
+
+        public void UpdateConnectionStatus(string status)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<string>(UpdateConnectionStatus), status);
+            }
+            else
+            {
+                connectionStatus.Text = status;
+            }
+        }
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Control && e.KeyCode == Keys.Add)

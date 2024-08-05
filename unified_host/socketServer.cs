@@ -12,10 +12,10 @@ namespace unified_host
     {
         public int port;
         public UdpClient udpServer;
-        connect form;
+        unified_host form;
         public IPEndPoint remoteEndPoint;
 
-        public socketServer(int port, connect f)
+        public socketServer(int port, unified_host f)
         {
 
             udpServer = new UdpClient(port);
