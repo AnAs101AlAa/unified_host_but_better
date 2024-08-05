@@ -10,9 +10,9 @@ namespace unified_host
         private TextBox portInput;
         private Button confirmPort;
         private Label connectionStatus;
-        private UdpListener server;
-        private UdpClient client;
-
+        private Button start;
+        private socketServer server;
+        
         public connect()
         {
             InitializeComponent();
@@ -30,6 +30,11 @@ namespace unified_host
             confirmPort.Location = new Point(120, 10);
             confirmPort.Click += new EventHandler(ConfirmPort_Click);
 
+            start = new Button();
+            start.Text = "start";
+            start.Location = new Point(120, 80);
+            start.Click += new EventHandler(startcomm);
+
             connectionStatus = new Label();
             connectionStatus.Location = new Point(10, 40);
             connectionStatus.Size = new Size(200, 20);
@@ -42,39 +47,23 @@ namespace unified_host
 
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
-             UdpClient udpServer = new UdpClient(65500); // Create a UDP client listening on port 1302
-            Console.WriteLine("UDP Server is listening on port 65500");
+            server = new socketServer(int.Parse(portInput.Text), this);
+            server.start();
 
-            IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 65500);
-
-            try
+            if (server.isConnected())
             {
-                while (true)
-                {
-                    // Receive data from any remote endpoint
-                    byte[] receivedBytes = udpServer.Receive(ref remoteEndPoint);
-
-                    // Convert received bytes to a string
-                    string receivedData = Encoding.UTF8.GetString(receivedBytes);
-                    Console.WriteLine($"Received data from {remoteEndPoint}: {receivedData}");
-
-                    // Prepare a response message
-                    string responseMessage = "You suck";
-                    byte[] responseBytes = Encoding.UTF8.GetBytes(responseMessage);
-
-                    // Send the response to the remote endpoint
-                    udpServer.Send(responseBytes, responseBytes.Length, remoteEndPoint);
-                    Console.WriteLine($"Sent response to {remoteEndPoint}");
-                }
+                UpdateConnectionStatus("client connected successfully");
             }
-            catch (Exception x)
+            else
             {
-                Console.WriteLine($"An error occurred: {x.Message}");
+                UpdateConnectionStatus("client failed to connect");
+                server.stop();
             }
-            finally
-            {
-                udpServer.Close();
-            }
+        }
+
+        private void startcomm(object sender, EventArgs e)
+        {
+            
         }
 
         public void UpdateConnectionStatus(string status)
