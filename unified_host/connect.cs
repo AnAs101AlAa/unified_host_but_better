@@ -1,4 +1,7 @@
 ﻿using System.Net.Sockets;
+using System;
+using System.Net;
+using System.Text;
 
 namespace unified_host
 {
@@ -39,7 +42,39 @@ namespace unified_host
 
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
+             UdpClient udpServer = new UdpClient(65500); // Create a UDP client listening on port 1302
+            Console.WriteLine("UDP Server is listening on port 65500");
 
+            IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 65500);
+
+            try
+            {
+                while (true)
+                {
+                    // Receive data from any remote endpoint
+                    byte[] receivedBytes = udpServer.Receive(ref remoteEndPoint);
+
+                    // Convert received bytes to a string
+                    string receivedData = Encoding.UTF8.GetString(receivedBytes);
+                    Console.WriteLine($"Received data from {remoteEndPoint}: {receivedData}");
+
+                    // Prepare a response message
+                    string responseMessage = "You suck";
+                    byte[] responseBytes = Encoding.UTF8.GetBytes(responseMessage);
+
+                    // Send the response to the remote endpoint
+                    udpServer.Send(responseBytes, responseBytes.Length, remoteEndPoint);
+                    Console.WriteLine($"Sent response to {remoteEndPoint}");
+                }
+            }
+            catch (Exception x)
+            {
+                Console.WriteLine($"An error occurred: {x.Message}");
+            }
+            finally
+            {
+                udpServer.Close();
+            }
         }
 
         public void UpdateConnectionStatus(string status)
