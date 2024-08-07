@@ -64,7 +64,7 @@ namespace unified_host
             return result;
         }
 
-        public async void example()
+        public void programSequence()
         {
             form.UpdateConnectionStatus("sending wake up...");
             IPAddress ipAddress = IPAddress.Parse("192.168.1.4");
@@ -104,6 +104,11 @@ namespace unified_host
             }
         }
 
+
+        public async bool operationHandler()
+        {
+
+        }
          //-------------------------------------for send and receive requests functionallity-------------------------------------//
         //-------------------------------------this is legacy code now do not touch this pls------------------------------------//
         public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000)
