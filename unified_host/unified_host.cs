@@ -4,29 +4,36 @@ namespace unified_host
 {
     public partial class unified_host : Form
     {
+        //file browse and preview
         private Button nextButton;
         private Button prevButton;
         private Button browseButton;
         private Button clearButton;
         private TextBox fileContentTextBox;
         private ComboBox linesToDisplayComboBox;
+        private Font defaultFont;
+
+        //data storage and manipulation
         private string[] fileLines;
         private int currentPage;
         private int linesPerPage;
         private Label currentPageIndicator;
+
+        //port and ip reading and connection
+        private Label portLabel;
+        private Label ipLabel;
         private TextBox portInput;
+        private TextBox ipInput;
         private Button confirmPort;
         private Label connectionStatus;
         private Button start;
         private socketServer server;
-        private Font defaultFont;
 
         public unified_host()
         {
             InitializeComponent();
             InitializeCustomComponents();
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
-            this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = Color.Lavender;
             this.Size = new Size(1000, 700);
             this.Resize += new EventHandler(Form1_Resize);
@@ -56,7 +63,7 @@ namespace unified_host
             browseButton = new Button();
             browseButton.Text = "Browse";
             browseButton.BackColor = Color.White;
-            browseButton.Location = new Point(870, 10);
+            browseButton.Location = new Point(870, 610);
             browseButton.Click += new EventHandler(BrowseButton_Click);
 
             //clear file previewed button
@@ -87,21 +94,35 @@ namespace unified_host
 
             //--------------------the following is for port operations and starting boot------------------------------//
 
+            portLabel = new Label();
+            portLabel.Location = new Point(10, 15);
+            portLabel.Text = "Port:";
+
             //port input field to coonect to
             portInput = new TextBox();
-            portInput.Location = new Point(10, 10);
+            portInput.Location = new Point(50, 10);
             portInput.Size = new Size(100, 20);
+
+            //label of the ip address
+            ipLabel = new Label();
+            ipLabel.Location = new Point(170, 15);
+            ipLabel.Text = "IP Address:";
+
+            //ip address input field of the chip
+            ipInput = new TextBox();
+            ipInput.Location = new Point(240, 10);
+            ipInput.Size = new Size(130, 20);
 
             //connect on selected port
             confirmPort = new Button();
             confirmPort.Text = "Connect";
-            confirmPort.Location = new Point(120, 10);
+            confirmPort.Location = new Point(390, 10);
             confirmPort.Click += new EventHandler(ConfirmPort_Click);
 
             //start booting
             start = new Button();
             start.Text = "start";
-            start.Location = new Point(200, 10);
+            start.Location = new Point(480, 10);
             start.Click += new EventHandler(startcomm);
 
             //current booting and port status
@@ -109,7 +130,6 @@ namespace unified_host
             connectionStatus.Location = new Point(10, 40);
             connectionStatus.Size = new Size(200, 20);
             connectionStatus.Text = "Disconnected";
-
 
             //-------------------------------adding all components to the form----------------------------------//
 
@@ -124,6 +144,9 @@ namespace unified_host
             this.Controls.Add(currentPageIndicator);
             this.Controls.Add(clearButton);
             this.Controls.Add(browseButton);
+            this.Controls.Add(ipInput);
+            this.Controls.Add(portLabel);
+            this.Controls.Add(ipLabel);
             defaultFont = fileContentTextBox.Font;
         }
 
@@ -255,7 +278,7 @@ namespace unified_host
         }
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
-            server = new socketServer(int.Parse(portInput.Text), this);
+            server = new socketServer(int.Parse(portInput.Text),ipInput.Text, this);
             server.start();
 
             if (server.isConnected())
@@ -271,7 +294,7 @@ namespace unified_host
 
         private void startcomm(object sender, EventArgs e)
         {
-
+            server.example();
         }
     }
 }
