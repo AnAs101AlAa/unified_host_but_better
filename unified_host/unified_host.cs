@@ -284,7 +284,7 @@ namespace unified_host
 
         private void startcomm(object sender, EventArgs e)
         {
-            server.example();
+            server.programSequence();
         }
     }
 }
