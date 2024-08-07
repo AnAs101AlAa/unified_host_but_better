@@ -8,58 +8,38 @@ using System.Net;
 
 namespace unified_host
 {
-
-    public static class UdpClientExtensions
-    {
-        public static async Task<UdpReceiveResult> WithCancellation(this Task<UdpReceiveResult> task, CancellationToken cancellationToken)
-        {
-            var tcs = new TaskCompletionSource<bool>();
-            using (cancellationToken.Register(s => ((TaskCompletionSource<bool>)s).TrySetResult(true), tcs))
-            {
-                if (task != await Task.WhenAny(task, tcs.Task))
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-            }
-            return await task;
-        }
-    }
-
     public partial class socketServer
     {
         public int port;
-        public IPAddress ip;
+        public IPAddress ipTarget;
         public UdpClient udpServer;
-        unified_host form;
+        public unified_host form;
         public IPEndPoint remoteEndPoint;
-        byte[] request;
-        byte[] response;
 
-        public socketServer(int port,string ip, unified_host f)
+        public struct UdpState
         {
-            udpServer = new UdpClient(port);
+            public UdpClient u;
+
+            public IPEndPoint e;
+        }
+
+        public socketServer(int port, string ip, unified_host f)
+        {
             this.port = port;
             form = f;
-            this.ip = IPAddress.Parse(ip);
-            remoteEndPoint = new IPEndPoint(IPAddress.Parse(ip), port);
+            this.ipTarget = IPAddress.Parse(ip);
+            remoteEndPoint = new IPEndPoint(ipTarget, port);
+            udpServer = new UdpClient(port);
         }
 
-        public bool isConnected()
+        public static void ReceiveCallback(IAsyncResult ar)
         {
-            int sec = 10000;
-            while (sec > 0)
-            {
-                if (udpServer.Client.Connected)
-                    return true;
-                sec--;
-            }
-            return false;
-        }
+            UdpClient u = ((UdpState)(ar.AsyncState)).u;
+            IPEndPoint e = ((UdpState)(ar.AsyncState)).e;
 
-        public void start()
-        {
-            form.UpdateConnectionStatus("starting connection...");
-            udpServer.Connect(ip, port);
+            byte[] receiveBytes = u.EndReceive(ar, ref e);
+
+            MessageBox.Show($"Received: {BitConverter.ToString(receiveBytes)}");
         }
 
         public void stop()
@@ -93,7 +73,7 @@ namespace unified_host
             return result;
         }
 
-        public void example()
+        public async void example()
         {
             form.UpdateConnectionStatus("sending wake up...");
             IPAddress ipAddress = IPAddress.Parse("192.168.1.4");
@@ -105,57 +85,37 @@ namespace unified_host
             final = InsertByteArray(final, mac, 6);
             byte[] expected = null;
 
-            if(!handlerequest(final, expected))
-            {
-                form.UpdateConnectionStatus("failed to send wake up"); return;
-            }
-            form.UpdateConnectionStatus("wake up sent");
+            handleRequest(final, expected);
 
-            Task.Delay(3000).Wait();
+            await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending LED on request...");
-            byte[] ledon = { 0x00, 0x10 };
-            byte[] ledonr = { 0x00,0x0E,0x00,0x10};
+            form.UpdateConnectionStatus("sending led ask...");
+            byte[] ledask = { 0x00, 0x10 };
+            byte[] ledresponse = { 0x00, 0x0E, 0x00, 0x10 };
 
-            if (!handlerequest(ledon, ledonr))
-            {
-                form.UpdateConnectionStatus("failed to send LED on request"); return;
-            }
-            form.UpdateConnectionStatus("LED on request sent");
+            handleRequest(ledask, ledresponse);
         }
-
-
 
         public void sendMessage(byte[] message)
         {
 
-            udpServer.Send(message, message.Length);
+            udpServer.Send(message, message.Length, remoteEndPoint);
         }
 
-        public void receiveMessage()
-        {
-                response = this.udpServer.Receive(ref this.remoteEndPoint);
-        }
 
-        public bool handlerequest(byte[] request, byte[] expected)
+        public bool handleRequest(byte[] message, byte[] repsonse)
         {
-            sendMessage(request);
-            Thread t = new Thread(receiveMessage);
-            t.Start();
-
-            if (expected == null)
+            sendMessage(message);
+            if (repsonse == null)
             {
                 return true;
             }
+            UdpState s = new UdpState();
+            s.e = remoteEndPoint;
+            s.u = udpServer;
 
-            while (true)
-            {
-                if (response != null && BitConverter.ToString(response) == BitConverter.ToString(expected))
-                {
-                    return true;
-                }
-            }
+            udpServer.BeginReceive(new AsyncCallback(ReceiveCallback), s);
+            return true;
         }
-
     }
 }

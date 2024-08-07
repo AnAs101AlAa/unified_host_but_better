@@ -279,17 +279,7 @@ namespace unified_host
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
             server = new socketServer(int.Parse(portInput.Text),ipInput.Text, this);
-            server.start();
-
-            if (server.isConnected())
-            {
-                UpdateConnectionStatus("client connected successfully");
-            }
-            else
-            {
-                UpdateConnectionStatus("client failed to connect");
-                server.stop();
-            }
+            UpdateConnectionStatus("client ready for programming");
         }
 
         private void startcomm(object sender, EventArgs e)
