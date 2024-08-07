@@ -15,6 +15,7 @@ namespace unified_host
         public UdpClient udpServer;
         public unified_host form;
         public IPEndPoint remoteEndPoint;
+        public byte[] calledBackReponse;
 
         public struct UdpState
         {
@@ -30,16 +31,6 @@ namespace unified_host
             this.ipTarget = IPAddress.Parse(ip);
             remoteEndPoint = new IPEndPoint(ipTarget, port);
             udpServer = new UdpClient(port);
-        }
-
-        public static void ReceiveCallback(IAsyncResult ar)
-        {
-            UdpClient u = ((UdpState)(ar.AsyncState)).u;
-            IPEndPoint e = ((UdpState)(ar.AsyncState)).e;
-
-            byte[] receiveBytes = u.EndReceive(ar, ref e);
-
-            MessageBox.Show($"Received: {BitConverter.ToString(receiveBytes)}");
         }
 
         public void stop()
@@ -85,7 +76,16 @@ namespace unified_host
             final = InsertByteArray(final, mac, 6);
             byte[] expected = null;
 
-            handleRequest(final, expected);
+            bool success = await handleRequest(final, expected);
+            if (success)
+            {
+                form.UpdateConnectionStatus("wake up sent");
+            }
+            else
+            {
+                form.UpdateConnectionStatus("wake up failed");
+                return;
+            }
 
             await Task.Delay(2000);
 
@@ -93,8 +93,47 @@ namespace unified_host
             byte[] ledask = { 0x00, 0x10 };
             byte[] ledresponse = { 0x00, 0x0E, 0x00, 0x10 };
 
-            handleRequest(ledask, ledresponse);
+            bool ledSuccess = await handleRequest(ledask, ledresponse);
+            if (ledSuccess)
+            {
+                form.UpdateConnectionStatus("led sent");
+            }
+            else
+            {
+                form.UpdateConnectionStatus("led failed");
+            }
         }
+
+
+        public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000)
+        {
+            sendMessage(message);
+            if (response == null)
+            {
+                return true;
+            }
+
+            UdpState s = new UdpState();
+            s.e = remoteEndPoint;
+            s.u = udpServer;
+
+            using (var cts = new CancellationTokenSource())
+            {
+                var receiveTask = Task.Run(() => ReceiveCallback(s, cts.Token), cts.Token);
+
+                if (await Task.WhenAny(receiveTask, Task.Delay(timeoutMilliseconds, cts.Token)) == receiveTask)
+                {
+                    cts.Cancel();
+                    return calledBackReponse != null && BitConverter.ToString(calledBackReponse) == BitConverter.ToString(response);
+                }
+                else
+                {
+                    form.UpdateConnectionStatus("Receive operation timed out.");
+                    return false;
+                }
+            }
+        }
+
 
         public void sendMessage(byte[] message)
         {
@@ -102,20 +141,28 @@ namespace unified_host
             udpServer.Send(message, message.Length, remoteEndPoint);
         }
 
-
-        public bool handleRequest(byte[] message, byte[] repsonse)
+        public void ReceiveCallback(UdpState state, CancellationToken token)
         {
-            sendMessage(message);
-            if (repsonse == null)
+            try
             {
-                return true;
-            }
-            UdpState s = new UdpState();
-            s.e = remoteEndPoint;
-            s.u = udpServer;
+                UdpClient u = state.u;
+                IPEndPoint e = state.e;
 
-            udpServer.BeginReceive(new AsyncCallback(ReceiveCallback), s);
-            return true;
+                while (!token.IsCancellationRequested)
+                {
+                    if (u.Available > 0)
+                    {
+                        calledBackReponse = u.Receive(ref e);
+                        form.UpdateConnectionStatus($"Received: {BitConverter.ToString(calledBackReponse)}");
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                form.UpdateConnectionStatus($"Receive operation failed: {ex.Message}");
+            }
         }
+
     }
 }
