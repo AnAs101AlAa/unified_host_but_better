@@ -104,7 +104,8 @@ namespace unified_host
             }
         }
 
-
+         //-------------------------------------for send and receive requests functionallity-------------------------------------//
+        //-------------------------------------this is legacy code now do not touch this pls------------------------------------//
         public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000)
         {
             sendMessage(message);
@@ -117,23 +118,34 @@ namespace unified_host
             s.e = remoteEndPoint;
             s.u = udpServer;
 
+            int counter = 0;
+            trial:
+            if(counter == 5)
+            {
+                form.UpdateConnectionStatus("Receive operation timed out.");
+                return false;
+            }
             using (var cts = new CancellationTokenSource())
             {
                 var receiveTask = Task.Run(() => ReceiveCallback(s, cts.Token), cts.Token);
 
                 if (await Task.WhenAny(receiveTask, Task.Delay(timeoutMilliseconds, cts.Token)) == receiveTask)
                 {
-                    cts.Cancel();
-                    return calledBackReponse != null && BitConverter.ToString(calledBackReponse) == BitConverter.ToString(response);
+                    if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) != BitConverter.ToString(response))
+                    {
+                        sendMessage(message);
+                        counter++;
+                        goto trial;
+                    }
+                    else if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) == BitConverter.ToString(response))
+                    {
+                        return true;
+                    }
                 }
-                else
-                {
-                    form.UpdateConnectionStatus("Receive operation timed out.");
-                    return false;
-                }
+                form.UpdateConnectionStatus("Receive operation timed out.");
+                return false;
             }
         }
-
 
         public void sendMessage(byte[] message)
         {
