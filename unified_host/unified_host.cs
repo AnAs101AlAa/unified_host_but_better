@@ -15,15 +15,18 @@ namespace unified_host
 
         //data storage and manipulation
         private string[] fileLines;
+        public List<byte[]> filePackets;
         private int currentPage;
         private int linesPerPage;
         private Label currentPageIndicator;
 
         //port and ip reading and connection
         private Label portLabel;
-        private Label ipLabel;
+        private Label remoteIpLabel;
+        private Label hostIpLabel;
         private TextBox portInput;
-        private TextBox ipInput;
+        private TextBox remoteIpInput;
+        private TextBox hostIpInput;
         private Button confirmPort;
         private Label connectionStatus;
         private Button start;
@@ -103,31 +106,45 @@ namespace unified_host
             portInput.Location = new Point(50, 10);
             portInput.Size = new Size(100, 20);
 
-            //label of the ip address
-            ipLabel = new Label();
-            ipLabel.Location = new Point(170, 15);
-            ipLabel.Text = "IP Address:";
+            //label of the remote ip address
+            remoteIpLabel = new Label();
+            remoteIpLabel.Location = new Point(170, 15);
+            remoteIpLabel.Text = "Remote IP Address:";
+            remoteIpLabel.Size = new Size(200, 20);
 
             //ip address input field of the chip
-            ipInput = new TextBox();
-            ipInput.Location = new Point(240, 10);
-            ipInput.Size = new Size(130, 20);
+            remoteIpInput = new TextBox();
+            remoteIpInput.Location = new Point(290, 10);
+            remoteIpInput.Size = new Size(130, 20);
+
+            //label of the host ip address
+            hostIpLabel = new Label();
+            hostIpLabel.Location = new Point(430, 15);
+            hostIpLabel.Text = "Host IP Address:";
+            hostIpLabel.Size = new Size(200, 20);
+
+            //ip address input field of the host
+            hostIpInput = new TextBox();
+            hostIpInput.Location = new Point(550, 10);
+            hostIpInput.Size = new Size(130, 20);
 
             //connect on selected port
             confirmPort = new Button();
             confirmPort.Text = "Connect";
-            confirmPort.Location = new Point(390, 10);
+            confirmPort.Size = new Size(80, 60);
+            confirmPort.Location = new Point(750, 10);
             confirmPort.Click += new EventHandler(ConfirmPort_Click);
 
             //start booting
             start = new Button();
             start.Text = "start";
-            start.Location = new Point(480, 10);
+            start.Size = new Size(80, 60);
+            start.Location = new Point(850, 10);
             start.Click += new EventHandler(startcomm);
 
             //current booting and port status
             connectionStatus = new Label();
-            connectionStatus.Location = new Point(10, 40);
+            connectionStatus.Location = new Point(410, 580);
             connectionStatus.Size = new Size(200, 20);
             connectionStatus.Text = "Disconnected";
 
@@ -144,9 +161,12 @@ namespace unified_host
             this.Controls.Add(currentPageIndicator);
             this.Controls.Add(clearButton);
             this.Controls.Add(browseButton);
-            this.Controls.Add(ipInput);
+            this.Controls.Add(remoteIpInput);
             this.Controls.Add(portLabel);
-            this.Controls.Add(ipLabel);
+            this.Controls.Add(remoteIpLabel);
+            this.Controls.Add(hostIpInput);
+            this.Controls.Add(hostIpLabel);
+
             defaultFont = fileContentTextBox.Font;
         }
 
@@ -196,7 +216,7 @@ namespace unified_host
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                openFileDialog.Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*|Hex Files (*.hex*)|*.hex";
+                openFileDialog.Filter = "Hex Files (*.hex*)|*.hex|Text Files (*.txt)|*.txt|All Files (*.*)|*.*";
                 openFileDialog.FilterIndex = 1;
 
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
@@ -278,12 +298,43 @@ namespace unified_host
         }
         private async void ConfirmPort_Click(object sender, EventArgs e)
         {
-            server = new socketServer(int.Parse(portInput.Text),ipInput.Text, this);
-            UpdateConnectionStatus("client ready for programming");
+            try
+            {
+                if (server != null)
+                {
+                    server.stop();
+                }
+                int Sport = 65500;
+                string remoteIp = "192.168.1.71";
+                string hostIp = "192.168.1.4";
+                if (portInput.Text != "")
+                    Sport = int.Parse(portInput.Text);
+                if(remoteIpInput.Text != "")
+                    remoteIp = remoteIpInput.Text;
+                if(hostIpInput.Text != "")
+                    hostIp = hostIpInput.Text;
+
+                server = new socketServer(Sport, remoteIp, hostIp, this);
+                UpdateConnectionStatus("client ready for programming");
+            }
+            catch(Exception x)
+            {
+                UpdateConnectionStatus($"can't connect client: {x.Message}");
+            }
         }
 
         private void startcomm(object sender, EventArgs e)
         {
+            if(fileLines == null)
+            {
+                MessageBox.Show("please select a file to program and try again");
+                return;
+            }
+
+            UpdateConnectionStatus("parsing hex file...");
+            filePackets = hexParser.parseLinesIntoPackets(fileLines);
+            UpdateConnectionStatus("hex file parsed");
+            Task.Delay(2000);
             server.programSequence();
         }
     }

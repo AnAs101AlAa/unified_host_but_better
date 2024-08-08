@@ -12,6 +12,7 @@ namespace unified_host
     {
         public int port;
         public IPAddress ipTarget;
+        public IPAddress ipHost;
         public UdpClient udpServer;
         public unified_host form;
         public IPEndPoint remoteEndPoint;
@@ -25,11 +26,12 @@ namespace unified_host
             public IPEndPoint e;
         }
 
-        public socketServer(int port, string ip, unified_host f)
+        public socketServer(int port, string remoteip, string hostip, unified_host f)
         {
             this.port = port;
             form = f;
-            this.ipTarget = IPAddress.Parse(ip);
+            this.ipTarget = IPAddress.Parse(remoteip);
+            this.ipHost = IPAddress.Parse(hostip);
             remoteEndPoint = new IPEndPoint(ipTarget, port);
             udpServer = new UdpClient(port);
         }
@@ -75,6 +77,7 @@ namespace unified_host
             else
             {
                 form.UpdateConnectionStatus("LED ON timed out");
+                return;
             }
 
             success = false;
@@ -89,6 +92,52 @@ namespace unified_host
             else
             {
                 form.UpdateConnectionStatus("LED OFF timed out");
+                return;
+            }
+
+            success = false;
+            await Task.Delay(2000);
+
+            form.UpdateConnectionStatus("sending boot ask...");
+            await operationHandler(3);
+            if (success)
+            {
+                form.UpdateConnectionStatus("boot sent");
+            }
+            else
+            {
+                form.UpdateConnectionStatus("boot timed out");
+                return;
+            }
+
+            success = false;
+            await Task.Delay(2000);
+
+            form.UpdateConnectionStatus("sending flash write...");
+            await operationHandler(4);
+            if (success)
+            {
+                form.UpdateConnectionStatus("flash write sent");
+            }
+            else
+            {
+                form.UpdateConnectionStatus("flash write timed out");
+                return;
+            }
+
+            success = false;
+            await Task.Delay(2000);
+
+            form.UpdateConnectionStatus("sending reset device...");
+            await operationHandler(5);
+            if (success)
+            {
+                form.UpdateConnectionStatus("reset device sent");
+            }
+            else
+            {
+                form.UpdateConnectionStatus("reset device timed out");
+                return;
             }
 
             success = false;
@@ -101,10 +150,8 @@ namespace unified_host
         {
             switch (opcode)
             {
-                case 0:
-                    IPAddress ipAddress = IPAddress.Parse("192.168.1.4");
-                    byte[] ipAddressBytes = ipAddress.GetAddressBytes();
-
+                case 0: //handshake operation
+                    byte[] ipAddressBytes = ipHost.GetAddressBytes();
                     byte[] message = { 0x00, 0x3f };
                     byte[] requestWake = InsertByteArray(message, ipAddressBytes, 2);
                     byte[] mac = { 0x60, 0x18, 0x95, 0x2D, 0x44, 0xF8 };
@@ -112,15 +159,41 @@ namespace unified_host
                     byte[] responseWake = null;
                     success = await handleRequest(requestWake, responseWake, 2000);
                     break;
-                case 1:
+                case 1: //LED ON operation
                     byte[] requestLED1 = { 0x00, 0x10 };
                     byte[] responseLED1 = { 0x00, 0x0E, 0x00, 0x10 };
                     success = await handleRequest(requestLED1, responseLED1, 2000);
                     break;
-                case 2:
+                case 2: //LED OFF operation
                     byte[] requestLED2 = { 0x00, 0x11 };
                     byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
                     success = await handleRequest(requestLED2, responseLED2, 2000);
+                    break;
+                case 3: //erase memory and go to boot operation
+                    byte[] requesBoot = { 0x00, 0x52 };
+                    byte[] responseBoot = { 0x00, 0x48};
+                    success = await handleRequest(requesBoot, responseBoot, 20000);
+                    break;
+                case 4: //flash write operation
+                    int currPage = 0;
+                    foreach (byte[] packet in form.filePackets)
+                    {
+                        byte[] requestWrite = { 0x00, 0x55};
+                        requestWrite = InsertByteArray(requestWrite, IntToTwoBytes(currPage), 2);
+                        requestWrite = InsertByteArray(requestWrite, packet, 4);
+                        byte[] responseWrite = { 0x00, 0x4A};
+                        responseWrite = InsertByteArray(responseWrite, IntToTwoBytes(currPage), 2);
+                        success = await handleRequest(requestWrite, responseWrite, 20000);
+                        if (!success){
+                            break;
+                        }
+                        currPage++;
+                    }
+                    break;
+                case 5:
+                    byte[] requestReset = { 0x00, 0x50 };
+                    byte[] responseReset = null;
+                    success = await handleRequest(requestReset, responseReset, 20000);
                     break;
 
             }
@@ -213,6 +286,15 @@ namespace unified_host
             Array.Copy(destination, index, result, index + source.Length, destination.Length - index);
 
             return result;
+        }
+        public static byte[] IntToTwoBytes(int value)
+        {
+            byte[] bytes = BitConverter.GetBytes((ushort)value);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+            return bytes;
         }
     }
 }
