@@ -33,10 +33,8 @@ namespace unified_host
         //port and ip reading and connection
         private Label portLabel;
         private Label remoteIpLabel;
-        private Label hostIpLabel;
         private TextBox portInput;
         private TextBox remoteIpInput;
-        private TextBox hostIpInput;
         private Button confirmPort;
         private Button start;
         private socketServer server;
@@ -128,17 +126,6 @@ namespace unified_host
             remoteIpInput.Location = new Point(290, 10);
             remoteIpInput.Size = new Size(130, 20);
 
-            //label of the host ip address
-            hostIpLabel = new Label();
-            hostIpLabel.Location = new Point(430, 15);
-            hostIpLabel.Text = "Host IP Address:";
-            hostIpLabel.Size = new Size(200, 20);
-
-            //ip address input field of the host
-            hostIpInput = new TextBox();
-            hostIpInput.Location = new Point(550, 10);
-            hostIpInput.Size = new Size(130, 20);
-
             //connect on selected port
             confirmPort = new Button();
             confirmPort.Text = "Connect";
@@ -168,8 +155,6 @@ namespace unified_host
             this.Controls.Add(remoteIpInput);
             this.Controls.Add(portLabel);
             this.Controls.Add(remoteIpLabel);
-            this.Controls.Add(hostIpInput);
-            this.Controls.Add(hostIpLabel);
 
             defaultFont = fileContentTextBox.Font;
         }
@@ -314,10 +299,8 @@ namespace unified_host
                     Sport = int.Parse(portInput.Text);
                 if (remoteIpInput.Text != "")
                     remoteIp = remoteIpInput.Text;
-                if (hostIpInput.Text != "")
-                    hostIp = hostIpInput.Text;
 
-                server = new socketServer(Sport, remoteIp, hostIp);
+                server = new socketServer(Sport, remoteIp);
 
                 //test if devide is connected and respondes to commands
                 await server.verifyDeviceConnection();

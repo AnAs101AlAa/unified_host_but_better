@@ -29,11 +29,11 @@ namespace unified_host
             public IPEndPoint e;
         }
 
-        public socketServer(int port, string remoteip, string hostip)
+        public socketServer(int port, string remoteip)
         {
             this.port = port;
             this.ipTarget = IPAddress.Parse(remoteip);
-            this.ipHost = IPAddress.Parse(hostip);
+            this.ipHost = GetEthernetIPv4Address();
             remoteEndPoint = new IPEndPoint(ipTarget, port);
             udpServer = new UdpClient(port);
         }
@@ -358,6 +358,27 @@ namespace unified_host
                 {
                     PhysicalAddress address = nic.GetPhysicalAddress();
                     return address.GetAddressBytes();
+                }
+            }
+            return null;
+        }
+        static IPAddress GetEthernetIPv4Address()
+        {
+            foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus == OperationalStatus.Up &&
+                    nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+                {
+                    var ipProperties = nic.GetIPProperties();
+                    var ipv4Address = ipProperties.UnicastAddresses
+                        .Where(addr => addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                        .Select(addr => addr.Address)
+                        .FirstOrDefault();
+
+                    if (ipv4Address != null)
+                    {
+                        return ipv4Address;
+                    }
                 }
             }
             return null;
