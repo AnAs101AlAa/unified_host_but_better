@@ -5,19 +5,22 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Net.Sockets;
 using System.Net;
+using System.Net.NetworkInformation;
 
 namespace unified_host
 {
     public partial class socketServer
     {
-        public int port;
-        public IPAddress ipTarget;
-        public IPAddress ipHost;
-        public UdpClient udpServer;
-        public unified_host form;
-        public IPEndPoint remoteEndPoint;
-        public byte[] calledBackReponse;
-        public bool success = false;
+        public int pageCount; //number of packets in flash to write
+        public UInt32 totalCheckSum; //checksum of all packets
+        public List<byte[]> packetsOut; //list of packets to send
+        public int port; //port to connect to
+        public IPAddress ipTarget; //target IP address
+        public IPAddress ipHost; //host IP address
+        public UdpClient udpServer; //UDP client
+        public IPEndPoint remoteEndPoint; //remote endpoint
+        public byte[] calledBackReponse; //actual response from server at any point
+        public bool success = false; //success flag on each command sent
 
         public struct UdpState
         {
@@ -26,127 +29,166 @@ namespace unified_host
             public IPEndPoint e;
         }
 
-        public socketServer(int port, string remoteip, string hostip, unified_host f)
+        public socketServer(int port, string remoteip, string hostip)
         {
             this.port = port;
-            form = f;
             this.ipTarget = IPAddress.Parse(remoteip);
             this.ipHost = IPAddress.Parse(hostip);
             remoteEndPoint = new IPEndPoint(ipTarget, port);
             udpServer = new UdpClient(port);
         }
-
-        public void stop()
+        
+        public void stop(unified_host form, sequenceConsole console)
         {
-            form.UpdateConnectionStatus("stopping connection...");
+            console.addLine("stopping connection...");
             try
             {
                 udpServer.Close();
-                form.UpdateConnectionStatus("disconnected");
+                udpServer.Dispose();
+                console.addLine("disconnected");
             }
             catch (Exception x)
             {
-                Console.WriteLine($"An error occurred: {x.Message}");
+                console.addLine($"An error occurred: {x.Message}");
             }
         }
 
         //-------------------------------------sequence of operations to be performed-------------------------------------//
-        public async void programSequence()
+        public async Task<bool> programSequence(sequenceConsole console)
         {
-            form.UpdateConnectionStatus("sending wake up...");
-            await operationHandler(0);
+            success = false;
+
+            
+            console.addLine("sending wake up..."); //send ip and mac address to wake up device
+            await operationHandler(0, console);
             if (success)
             {
-                form.UpdateConnectionStatus("wake up sent");
+                console.addLine("wake up sent successfully");
             }
             else
             {
-                form.UpdateConnectionStatus("wake up timed out");
-                return;
+                console.addLine("wake up timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending LED ON ask...");
-            await operationHandler(1);
+            console.addLine("sending LED ON ask..."); //send LED ON to test LED
+            await operationHandler(1, console);
             if (success)
             {
-                form.UpdateConnectionStatus("LED ON sent");
+                console.addLine("LED ON sent successfully");
             }
             else
             {
-                form.UpdateConnectionStatus("LED ON timed out");
-                return;
+                console.addLine("LED ON timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending lED OFF ask...");
-            await operationHandler(2);
+            console.addLine("sending lED OFF ask..."); //send LED OFF to double check LED
+            await operationHandler(2, console);
             if (success)
             {
-                form.UpdateConnectionStatus("LED OFF sent");
+                console.addLine("LED OFF sent successfully");
             }
             else
             {
-                form.UpdateConnectionStatus("LED OFF timed out");
-                return;
+                console.addLine("LED OFF timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending boot ask...");
-            await operationHandler(3);
+            console.addLine("sending erase and boot ask..."); //send erase and boot to prepare for flash write
+            await operationHandler(3, console);
             if (success)
             {
-                form.UpdateConnectionStatus("boot sent");
+                console.addLine("erase and boot sent successfully");
             }
             else
             {
-                form.UpdateConnectionStatus("boot timed out");
-                return;
+                console.addLine("erase and boot timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending flash write...");
-            await operationHandler(4);
+            console.addLine("sending flash write sequence..."); //send flash write to write new program sequence
+            await operationHandler(4, console);
             if (success)
             {
-                form.UpdateConnectionStatus("flash write sent");
+                console.addLine("flash write sent done successfully");
             }
             else
             {
-                form.UpdateConnectionStatus("flash write timed out");
-                return;
+                console.addLine("flash write timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
 
-            form.UpdateConnectionStatus("sending reset device...");
-            await operationHandler(5);
+            console.addLine($"sending checksum check... value of checksum calculated is: 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}"); //send checksum check to verify flash write
+            await operationHandler(5, console);
             if (success)
             {
-                form.UpdateConnectionStatus("reset device sent");
+                console.addLine($"checksum check sent and verified successfully with value 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}");
             }
             else
             {
-                form.UpdateConnectionStatus("reset device timed out");
-                return;
+                console.addLine("checksum check timed out");
+                return false;
             }
 
             success = false;
             await Task.Delay(2000);
-            form.UpdateConnectionStatus("sequence completed");
+
+            console.addLine("sending reset device..."); //reset device to boot into new program
+            await operationHandler(6, console);
+            if (success)
+            {
+                console.addLine("reset device sent");
+            }
+            else
+            {
+                console.addLine("reset device timed out");
+                return false;
+            }
+
+            success = false;
+            await Task.Delay(2000);
+            //sequence completed
+            console.addLine("sequence complete...poggers" + Environment.NewLine + "device should be reset and running new program" + Environment.NewLine + "i am not in danger I AM THE DANGER. I AM THE ONE WHO KNOCKS");
+            return true;
         }
 
-        //-------------------------------------handles logic of making UDP packets and expected responses-------------------------------------//
-        public async Task operationHandler(int opcode)
+        //-----------------------------------------------handles logic of making UDP packets and expected responses---------------------------------------------//
+
+        public async Task verifyDeviceConnection()
+        {
+            byte[] ipAddressBytes = ipHost.GetAddressBytes();
+            byte[] message = { 0x00, 0x3f };
+            byte[] requestWake = InsertByteArray(message, ipAddressBytes, 2);
+            byte[] mac = { 0x60, 0x18, 0x95, 0x2D, 0x44, 0xF8 };
+            requestWake = InsertByteArray(requestWake, mac, 6);
+            byte[] responseWake = null;
+            success = await handleRequest(requestWake, responseWake, 2000);
+
+            if (!success)
+                return;
+
+            byte[] requestLED2 = { 0x00, 0x11 };
+            byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
+            success = await handleRequest(requestLED2, responseLED2, 2000);
+        }
+
+        public async Task operationHandler(int opcode, sequenceConsole console)
         {
             switch (opcode)
             {
@@ -154,53 +196,67 @@ namespace unified_host
                     byte[] ipAddressBytes = ipHost.GetAddressBytes();
                     byte[] message = { 0x00, 0x3f };
                     byte[] requestWake = InsertByteArray(message, ipAddressBytes, 2);
-                    byte[] mac = { 0x60, 0x18, 0x95, 0x2D, 0x44, 0xF8 };
-                    requestWake = InsertByteArray(requestWake, mac, 6);
+                    requestWake = InsertByteArray(requestWake, GetMacAddress(), 6);
                     byte[] responseWake = null;
-                    success = await handleRequest(requestWake, responseWake, 2000);
+                    success = await handleRequest(requestWake, responseWake, 2000, console);
                     break;
                 case 1: //LED ON operation
                     byte[] requestLED1 = { 0x00, 0x10 };
                     byte[] responseLED1 = { 0x00, 0x0E, 0x00, 0x10 };
-                    success = await handleRequest(requestLED1, responseLED1, 2000);
+                    success = await handleRequest(requestLED1, responseLED1, 2000, console);
                     break;
                 case 2: //LED OFF operation
                     byte[] requestLED2 = { 0x00, 0x11 };
                     byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
-                    success = await handleRequest(requestLED2, responseLED2, 2000);
+                    success = await handleRequest(requestLED2, responseLED2, 2000, console);
                     break;
                 case 3: //erase memory and go to boot operation
                     byte[] requesBoot = { 0x00, 0x52 };
                     byte[] responseBoot = { 0x00, 0x48};
-                    success = await handleRequest(requesBoot, responseBoot, 20000);
+                    success = await handleRequest(requesBoot, responseBoot, 20000, console);
                     break;
                 case 4: //flash write operation
                     int currPage = 0;
-                    foreach (byte[] packet in form.filePackets)
+                    foreach (byte[] packet in packetsOut)
                     {
                         byte[] requestWrite = { 0x00, 0x55};
                         requestWrite = InsertByteArray(requestWrite, IntToTwoBytes(currPage), 2);
                         requestWrite = InsertByteArray(requestWrite, packet, 4);
                         byte[] responseWrite = { 0x00, 0x4A};
                         responseWrite = InsertByteArray(responseWrite, IntToTwoBytes(currPage), 2);
-                        success = await handleRequest(requestWrite, responseWrite, 20000);
+                        success = await handleRequest(requestWrite, responseWrite, 20000, console);
                         if (!success){
+                            console.addLine($"flash write failed at page: {currPage+1} out of {pageCount}");
                             break;
                         }
                         currPage++;
                     }
                     break;
-                case 5:
+                case 5: //checksum check operation
+                    byte[] requestChecksum = { 0x00, 0x4D };
+                    requestChecksum = InsertByteArray(requestChecksum, IntToTwoBytes(pageCount), 2);
+                    byte[] responseChecksum = { 0x00, 0x4F };
+                    byte[] checkSumBytes = BitConverter.GetBytes(totalCheckSum);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(checkSumBytes);
+                    }
+                    responseChecksum = InsertByteArray(responseChecksum, checkSumBytes, 2);
+                    success = await handleRequest(requestChecksum, responseChecksum, 20000, console);
+                    break;
+                case 6: //reset device operation
                     byte[] requestReset = { 0x00, 0x50 };
                     byte[] responseReset = null;
-                    success = await handleRequest(requestReset, responseReset, 20000);
+                    success = await handleRequest(requestReset, responseReset, 20000, console);
                     break;
 
             }
         }
-            //-------------------------------------for send and receive requests functionallity-------------------------------------//
-            //-------------------------------------this is legacy code now do not touch this pls------------------------------------//
-            public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000)
+
+       //------------------------------------------------------for send and receive requests functionallity-----------------------------------------------//
+      //------------------------------------------------------this is legacy code now do not touch this pls----------------------------------------------//
+
+            public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000, sequenceConsole console = null)
         {
             sendMessage(message);
             if (response == null)
@@ -212,11 +268,10 @@ namespace unified_host
             s.e = remoteEndPoint;
             s.u = udpServer;
 
-            int counter = 0;
+            int attemptNumber = 0;
             trial:
-            if(counter == 5)
+            if(attemptNumber == 5)
             {
-                form.UpdateConnectionStatus("Receive operation timed out.");
                 return false;
             }
             using (var cts = new CancellationTokenSource())
@@ -227,8 +282,10 @@ namespace unified_host
                 {
                     if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) != BitConverter.ToString(response))
                     {
+                        if (console != null)
+                            console.addLine($"response not matched, retrying... attempt({attemptNumber+1}/5)");
                         sendMessage(message);
-                        counter++;
+                        attemptNumber++;
                         goto trial;
                     }
                     else if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) == BitConverter.ToString(response))
@@ -236,14 +293,12 @@ namespace unified_host
                         return true;
                     }
                 }
-                form.UpdateConnectionStatus("Receive operation timed out.");
                 return false;
             }
         }
 
         public void sendMessage(byte[] message)
         {
-
             udpServer.Send(message, message.Length, remoteEndPoint);
         }
 
@@ -265,12 +320,11 @@ namespace unified_host
             }
             catch (Exception ex)
             {
-                form.UpdateConnectionStatus($"Receive operation failed: {ex.Message}");
+                return;
             }
         }
 
-
-        //-------------------------------------utility functions-------------------------------------//
+        //------------------------------------------------------------------utility functions---------------------------------------------------------------//
         public static byte[] InsertByteArray(byte[] destination, byte[] source, int index)
         {
             if (destination == null)
@@ -295,6 +349,18 @@ namespace unified_host
                 Array.Reverse(bytes);
             }
             return bytes;
+        }
+        public static byte[] GetMacAddress()
+        {
+            foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if ((nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet))
+                {
+                    PhysicalAddress address = nic.GetPhysicalAddress();
+                    return address.GetAddressBytes();
+                }
+            }
+            return null;
         }
     }
 }

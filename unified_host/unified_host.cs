@@ -1,4 +1,14 @@
 using System.Data;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Net.NetworkInformation;
+using System.Net;
 
 namespace unified_host
 {
@@ -28,10 +38,11 @@ namespace unified_host
         private TextBox remoteIpInput;
         private TextBox hostIpInput;
         private Button confirmPort;
-        private Label connectionStatus;
         private Button start;
         private socketServer server;
 
+        //console for following command line
+        sequenceConsole console;
         public unified_host()
         {
             InitializeComponent();
@@ -142,15 +153,8 @@ namespace unified_host
             start.Location = new Point(850, 10);
             start.Click += new EventHandler(startcomm);
 
-            //current booting and port status
-            connectionStatus = new Label();
-            connectionStatus.Location = new Point(410, 580);
-            connectionStatus.Size = new Size(200, 20);
-            connectionStatus.Text = "Disconnected";
-
             //-------------------------------adding all components to the form----------------------------------//
 
-            this.Controls.Add(connectionStatus);
             this.Controls.Add(portInput);
             this.Controls.Add(confirmPort);
             this.Controls.Add(start);
@@ -170,17 +174,6 @@ namespace unified_host
             defaultFont = fileContentTextBox.Font;
         }
 
-        public void UpdateConnectionStatus(string status)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<string>(UpdateConnectionStatus), status);
-            }
-            else
-            {
-                connectionStatus.Text = status;
-            }
-        }
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Control && e.KeyCode == Keys.Add)
@@ -300,30 +293,51 @@ namespace unified_host
         {
             try
             {
+                if (console != null)
+                {
+                    console.Close();
+                }
+                //open sequence follow up ocnsole where commands successes/fails are displayed
+                console = new sequenceConsole();
+                console.Show();
+
                 if (server != null)
                 {
-                    server.stop();
+                    server.stop(this, console);
+                    server = null;
                 }
+
                 int Sport = 65500;
                 string remoteIp = "192.168.1.71";
-                string hostIp = "192.168.1.4";
+                string hostIp = "192.168.1.2";
                 if (portInput.Text != "")
                     Sport = int.Parse(portInput.Text);
-                if(remoteIpInput.Text != "")
+                if (remoteIpInput.Text != "")
                     remoteIp = remoteIpInput.Text;
-                if(hostIpInput.Text != "")
+                if (hostIpInput.Text != "")
                     hostIp = hostIpInput.Text;
 
-                server = new socketServer(Sport, remoteIp, hostIp, this);
-                UpdateConnectionStatus("client ready for programming");
+                server = new socketServer(Sport, remoteIp, hostIp);
+
+                //test if devide is connected and respondes to commands
+                await server.verifyDeviceConnection();
+
+                if (server.success)
+                {
+                    console.addLine("device connected successfully");
+                }
+                else
+                {
+                    console.addLine("unable to connect to device");
+                }
             }
-            catch(Exception x)
+            catch (Exception x)
             {
-                UpdateConnectionStatus($"can't connect client: {x.Message}");
+                console.addLine($"can't connect client: {x.Message}");
             }
         }
 
-        private void startcomm(object sender, EventArgs e)
+        private async void startcomm(object sender, EventArgs e)
         {
             if(fileLines == null)
             {
@@ -331,11 +345,30 @@ namespace unified_host
                 return;
             }
 
-            UpdateConnectionStatus("parsing hex file...");
-            filePackets = hexParser.parseLinesIntoPackets(fileLines);
-            UpdateConnectionStatus("hex file parsed");
+            if(server == null)
+            {
+                MessageBox.Show("please connect to a client and try again");
+                return;
+            }
+
+            console.addLine("parsing hex file...");
+            try
+            {
+                hexParser.parseLinesIntoPackets(fileLines, server);
+                console.addLine("hex file parsed");
+            }
+            catch (Exception x)
+            {
+                console.addLine($"error parsing hex file: {x.Message}");
+                return;
+            }
+
+            console.addLine("starting programming sequence...");
             Task.Delay(2000);
-            server.programSequence();
+            await server.programSequence(console);
+
+            server.stop(this, console);
+            server = null;
         }
     }
 }
