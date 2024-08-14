@@ -19,10 +19,12 @@ namespace unified_host
         public UdpClient udpServer; //UDP client
         public IPEndPoint remoteEndPoint; //remote endpoint
         public byte[] calledBackReponse; //actual response from server at any point
-        public bool success = false; //success flag on each command sent
-        public int pairedDevices = 2;
+        public int pairedDevices = 0;
         public Dictionary<IPAddress, string> devicesResponses = new Dictionary<IPAddress, string>(); //dictionary of devices and their responses
         public IPAddress[] malfuntioning = [];
+        public int responsesGot = 0;
+        public Dictionary<IPAddress,sequenceConsole> devicesConsoles = new Dictionary<IPAddress, sequenceConsole>();
+
         public struct UdpState
         {
             public UdpClient u;
@@ -54,148 +56,122 @@ namespace unified_host
         }
 
         //-------------------------------------sequence of operations to be performed-------------------------------------//
-        public async Task<bool> programSequence(sequenceConsole console)
-        {
-            success = false;
-
-            
+        public async Task<Dictionary<IPAddress, sequenceConsole>> programSequence(sequenceConsole console)
+        {            
             console.addLine("sending wake up..."); //send ip and mac address to wake up device
             await operationHandler(0, console);
-            if (success)
-            {
-                console.addLine("wake up sent successfully");
-            }
-            else
-            {
-                console.addLine("wake up timed out");
-                return false;
-            }
-
-            if(!await checkMalfucntion(console))
-                {
-                return false;
-            }
-
-            console.addLine("sending LED ON ask..."); //send LED ON to test LED
-            await operationHandler(1, console);
-            if (success)
-            {
-                console.addLine("LED ON sent successfully");
-            }
-            else
-            {
-                console.addLine("LED ON timed out");
-            }
 
             if (!await checkMalfucntion(console))
             {
-                return false;
+                console.addLine("wake up failed");
+                goto terminateSequence;
+            }
+            foreach (IPAddress ip in devicesResponses.Keys)
+            {
+                devicesConsoles[ip].addLine("wake up sent successfully");
             }
 
-            console.addLine("sending lED OFF ask..."); //send LED OFF to double check LED
-            await operationHandler(2, console);
-            if (success)
-            {
-                console.addLine("LED OFF sent successfully");
-            }
-            else
-            {
-                console.addLine("LED OFF timed out");
-            }
-
-            if (!await checkMalfucntion(console))
-            {
-                return false;
-            }
+            console.addLine("wake up sent successfully");
+            await Task.Delay(2000);
 
             console.addLine("sending erase and boot ask..."); //send erase and boot to prepare for flash write
-            await operationHandler(3, console);
-            if (success)
-            {
-                console.addLine("erase and boot sent successfully");
-            }
-            else
-            {
-                console.addLine("some devices failed to erase and boot...");
-            }
+            await operationHandler(1, console);
 
             if (!await checkMalfucntion(console))
             {
-                return false;
+                console.addLine("devices failed to erase and boot...");
+                goto terminateSequence;
             }
+            foreach (IPAddress ip in devicesResponses.Keys)
+            {
+                devicesConsoles[ip].addLine("erase and boot sent successfully");
+            }
+            console.addLine("erase and boot sent successfully");
+            await Task.Delay(2000);
+
+
 
             console.addLine("sending flash write sequence..."); //send flash write to write new program sequence
-            await operationHandler(4, console);
-            if (success)
-            {
-                console.addLine("flash write sent done successfully");
-            }
-            else
+            await operationHandler(2, console);
+
+            if (!await checkMalfucntion(console))
             {
                 console.addLine("some devices failed to flash write...");
+                goto terminateSequence;
             }
-
-            if (!await checkMalfucntion(console))
+            foreach (IPAddress ip in devicesResponses.Keys)
             {
-                return false;
+                devicesConsoles[ip].addLine("flash write sent successfully");
             }
+            console.addLine("flash write sent done successfully");
+            await Task.Delay(2000);
 
             console.addLine($"sending checksum check... value of checksum calculated is: 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}"); //send checksum check to verify flash write
-            await operationHandler(5, console);
-            if (success)
-            {
-                console.addLine($"checksum check sent and verified successfully with value 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}");
-            }
-            else
+            await operationHandler(3, console);
+
+            if (!await checkMalfucntion(console))
             {
                 console.addLine("some devices failed to verify checksum...");
+                goto terminateSequence;
             }
-
-            if (!await checkMalfucntion(console))
+            foreach (IPAddress ip in devicesResponses.Keys)
             {
-                return false;
+                devicesConsoles[ip].addLine("checksum validation sent successfully");
             }
+            console.addLine($"checksum check sent and verified successfully with value 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}");
+            await Task.Delay(2000);
 
             console.addLine("sending reset device..."); //reset device to boot into new program
-            await operationHandler(6, console);
-            if (success)
-            {
-                console.addLine("reset device sent");
-            }
-            else
-            {
-                console.addLine("some devices failed to reset...");
-            }
+            await operationHandler(4, console);
 
             if (!await checkMalfucntion(console))
             {
-                return false;
+                console.addLine("some devices failed to reset...");
+                goto terminateSequence;
             }
+            foreach (IPAddress ip in devicesResponses.Keys)
+            {
+                devicesConsoles[ip].addLine("device reset sent successfully");
+            }
+            console.addLine("reset device sent");
+            await Task.Delay(2000);
+
+
             //sequence completed
-            console.addLine("sequence complete...poggers" + Environment.NewLine + "device should be reset and running new program" + Environment.NewLine + "i am not in danger I AM THE DANGER. I AM THE ONE WHO KNOCKS");
-            return true;
+            console.addLine("sequence complete...");
+        terminateSequence:
+            return devicesConsoles;
         }
 
         //-----------------------------------------------handles logic of making UDP packets and expected responses---------------------------------------------//
 
         public async Task verifyDeviceConnection(sequenceConsole console)
         {
+            //send a LED OFF command to fish for responsive IPs
+            if(ipHost == null)
+            {
+                MessageBox.Show("No network connection found, please connect to a network and try again");
+                return;
+            }
             byte[] ipAddressBytes = ipHost.GetAddressBytes();
             byte[] message = { 0x00, 0x3f };
             byte[] requestWake = InsertByteArray(message, ipAddressBytes, 2);
-            byte[] mac = { 0x60, 0x18, 0x95, 0x2D, 0x44, 0xF8 };
-            requestWake = InsertByteArray(requestWake, mac, 6);
+            requestWake = InsertByteArray(requestWake, GetMacAddress(), 6);
             byte[] responseWake = null;
-            success = await handleRequest(requestWake, responseWake, 2000);
-
-            if (!success)
-                return;
+            await handleRequest(requestWake, responseWake, 2000);
 
             byte[] requestLED2 = { 0x00, 0x11 };
             byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
-            success = await handleRequest(requestLED2, responseLED2, 2000);
+            await handleRequest(requestLED2, responseLED2, 2000);
             pairedDevices = devicesResponses.Count;
-            console.addLine($"device connected successfully, {pairedDevices} devices found");
+            console.addLine($"{pairedDevices} devices found");
+
+            //initialize consoles for each device connected and detected
+            devicesConsoles.Clear();
+            foreach (IPAddress ip in devicesResponses.Keys)
+            {
+                devicesConsoles[ip] = new sequenceConsole();
+            }
         }
 
         public async Task operationHandler(int opcode, sequenceConsole console)
@@ -208,24 +184,14 @@ namespace unified_host
                     byte[] requestWake = InsertByteArray(message, ipAddressBytes, 2);
                     requestWake = InsertByteArray(requestWake, GetMacAddress(), 6);
                     byte[] responseWake = null;
-                    success = await handleRequest(requestWake, responseWake, 2000, console);
+                    await handleRequest(requestWake, responseWake, 2000, console);
                     break;
-                case 1: //LED ON operation
-                    byte[] requestLED1 = { 0x00, 0x10 };
-                    byte[] responseLED1 = { 0x00, 0x0E, 0x00, 0x10 };
-                    success = await handleRequest(requestLED1, responseLED1, 2000, console);
-                    break;
-                case 2: //LED OFF operation
-                    byte[] requestLED2 = { 0x00, 0x11 };
-                    byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
-                    success = await handleRequest(requestLED2, responseLED2, 2000, console);
-                    break;
-                case 3: //erase memory and go to boot operation
+                case 1: //erase memory and go to boot operation
                     byte[] requesBoot = { 0x00, 0x52 };
                     byte[] responseBoot = { 0x00, 0x48};
-                    success = await handleRequest(requesBoot, responseBoot, 20000, console);
+                    await handleRequest(requesBoot, responseBoot, 40000, console);
                     break;
-                case 4: //flash write operation
+                case 2: //flash write operation
                     int currPage = 0;
                     foreach (byte[] packet in packetsOut)
                     {
@@ -234,15 +200,15 @@ namespace unified_host
                         requestWrite = InsertByteArray(requestWrite, packet, 4);
                         byte[] responseWrite = { 0x00, 0x4A};
                         responseWrite = InsertByteArray(responseWrite, IntToTwoBytes(currPage), 2);
-                        success = await handleRequest(requestWrite, responseWrite, 20000, console);
-                        if (!success){
+                        await handleRequest(requestWrite, responseWrite, 20000, console);
+                        if (!await checkMalfucntion(console)){
                             console.addLine($"flash write failed at page: {currPage+1} out of {pageCount}");
                             break;
                         }
                         currPage++;
                     }
                     break;
-                case 5: //checksum check operation
+                case 3: //checksum check operation
                     byte[] requestChecksum = { 0x00, 0x4D };
                     requestChecksum = InsertByteArray(requestChecksum, IntToTwoBytes(pageCount), 2);
                     byte[] responseChecksum = { 0x00, 0x4F };
@@ -252,37 +218,35 @@ namespace unified_host
                         Array.Reverse(checkSumBytes);
                     }
                     responseChecksum = InsertByteArray(responseChecksum, checkSumBytes, 2);
-                    success = await handleRequest(requestChecksum, responseChecksum, 20000, console);
+                    await handleRequest(requestChecksum, responseChecksum, 20000, console);
                     break;
-                case 6: //reset device operation
+                case 4: //reset device operation
                     byte[] requestReset = { 0x00, 0x50 };
                     byte[] responseReset = null;
-                    success = await handleRequest(requestReset, responseReset, 20000, console);
+                    await handleRequest(requestReset, responseReset, 20000, console);
                     break;
-
             }
         }
 
-        public async Task<bool> checkMalfucntion(sequenceConsole console)
+        public async Task<bool> checkMalfucntion(sequenceConsole console) //if all devices non responsive send false
         {
             if (pairedDevices == 0)
             {
-                console.addLine("device not responding, check connection and try again");
+                console.addLine("devices not responding, check connection and try again");
                 return false;
             }
-            success = false;
             await Task.Delay(2000);
             return true;
         }
        //------------------------------------------------------for send and receive requests functionallity-----------------------------------------------//
       //------------------------------------------------------this is legacy code now do not touch this pls----------------------------------------------//
 
-        public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000, sequenceConsole console = null)
+        public async Task handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000, sequenceConsole console = null)
         {
             sendMessage(message);
             if (response == null)
             {
-                return true;
+                return;
             }
 
             UdpState s = new UdpState();
@@ -294,7 +258,16 @@ namespace unified_host
             bool tryAgain = false;
             if (attemptNumber == 5)
             {
-                return false;
+                foreach (IPAddress currip in devicesResponses.Keys)
+                {
+                    if (devicesResponses[currip] != BitConverter.ToString(response))
+                    {
+                        malfuntioning.Append(currip);
+                        devicesResponses.Remove(currip);
+                        pairedDevices--;
+                    }
+                }
+                return;
             }
             using (var cts = new CancellationTokenSource())
             {
@@ -313,7 +286,7 @@ namespace unified_host
                                 pairedDevices--;
                             }
                             if (console != null)
-                                console.addLine($"response not matched, retrying... attempt({attemptNumber + 1}/5)");
+                                devicesConsoles[currip].addLine($"response not matched, retrying... attempt({attemptNumber + 1}/5)");
                             tryAgain = true;
                         }
                     }
@@ -322,10 +295,19 @@ namespace unified_host
                         attemptNumber++;
                         goto trial;
                     }
-                    return true;
+                    return;
                 }
             }
-        return false;
+            foreach(IPAddress currip in devicesResponses.Keys)
+            {
+                if (devicesResponses[currip] != BitConverter.ToString(response))
+                {
+                    malfuntioning.Append(currip);
+                    devicesResponses.Remove(currip);
+                    pairedDevices--;
+                }
+            }
+            return;
         }
 
         public void sendMessage(byte[] message)
@@ -344,7 +326,7 @@ namespace unified_host
                 {
                     if (u.Available > 0)
                     {
-                        int responsesGot = 0;
+                        responsesGot = 0;
                         while(responsesGot < pairedDevices)
                         {
                             calledBackReponse = u.Receive(ref e);

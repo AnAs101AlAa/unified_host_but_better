@@ -16,6 +16,7 @@ namespace unified_host
         public sequenceConsole()
         {
             this.Size = new Size(600, 400);
+            this.Icon = new Icon("icon.ico");
             InitializeComponent();
             initializeCustomComponents();
         }

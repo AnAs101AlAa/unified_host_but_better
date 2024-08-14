@@ -49,6 +49,7 @@ namespace unified_host
             this.Resize += new EventHandler(Form1_Resize);
             this.KeyPreview = true;
             this.KeyDown += new KeyEventHandler(Form1_KeyDown);
+            this.Icon = new Icon("icon.ico");
         }
 
         private void InitializeCustomComponents()
@@ -105,12 +106,12 @@ namespace unified_host
             //--------------------the following is for port operations and starting boot------------------------------//
 
             portLabel = new Label();
-            portLabel.Location = new Point(10, 15);
+            portLabel.Location = new Point(10, 25);
             portLabel.Text = "Port:";
 
             //port input field to coonect to
             portInput = new TextBox();
-            portInput.Location = new Point(50, 10);
+            portInput.Location = new Point(50, 20);
             portInput.Size = new Size(100, 20);
 
             //connect on selected port
@@ -122,8 +123,9 @@ namespace unified_host
 
             //start booting
             start = new Button();
-            start.Text = "start";
+            start.Text = "program\ndevices";
             start.Size = new Size(80, 60);
+            start.Enabled = false;
             start.Location = new Point(850, 10);
             start.Click += new EventHandler(startcomm);
 
@@ -263,19 +265,23 @@ namespace unified_host
         {
             try
             {
-                if (console != null)
+                if (console == null)
                 {
-                    console.Close();
+                    console = new sequenceConsole();
+                    console.Show();
                 }
+
                 //open sequence follow up ocnsole where commands successes/fails are displayed
-                console = new sequenceConsole();
-                console.Show();
 
                 if (server != null)
                 {
                     server.stop(this, console);
                     server = null;
                 }
+
+                console.Close();
+                console = new sequenceConsole();
+                console.Show();
 
                 int Sport = 65500;
                 string hostIp = "192.168.1.2";
@@ -286,15 +292,9 @@ namespace unified_host
 
                 //test if devide is connected and respondes to commands
                 await server.verifyDeviceConnection(console);
-
-                if (server.success)
-                {
-                    console.addLine("device connected successfully");
-                }
-                else
-                {
-                    console.addLine("unable to connect to device");
-                }
+                if (server.pairedDevices == 0)
+                    return;
+                start.Enabled = true;
             }
             catch (Exception x)
             {
@@ -329,9 +329,16 @@ namespace unified_host
             }
 
             console.addLine("starting programming sequence...");
-            Task.Delay(2000);
-            await server.programSequence(console);
+            await Task.Delay(2000);
+            Dictionary<IPAddress,sequenceConsole> devicesConsoles = await server.programSequence(console);
+            await Task.Delay(2000);
 
+            //open a new form to select and display the command stream of each device
+            console.addLine("to view each program sequence console, click on the device IP address in the list view");
+            devicesView devicesView = new devicesView(devicesConsoles);
+            devicesView.Show();
+
+            start.Enabled = false;
             server.stop(this, console);
             server = null;
         }
