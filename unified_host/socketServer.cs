@@ -85,7 +85,6 @@ namespace unified_host
             else
             {
                 console.addLine("LED ON timed out");
-                return false;
             }
 
             if (!await checkMalfucntion(console))
@@ -102,7 +101,6 @@ namespace unified_host
             else
             {
                 console.addLine("LED OFF timed out");
-                return false;
             }
 
             if (!await checkMalfucntion(console))
@@ -118,8 +116,7 @@ namespace unified_host
             }
             else
             {
-                console.addLine("erase and boot timed out");
-                return false;
+                console.addLine("some devices failed to erase and boot...");
             }
 
             if (!await checkMalfucntion(console))
@@ -135,8 +132,7 @@ namespace unified_host
             }
             else
             {
-                console.addLine("flash write timed out");
-                return false;
+                console.addLine("some devices failed to flash write...");
             }
 
             if (!await checkMalfucntion(console))
@@ -152,8 +148,7 @@ namespace unified_host
             }
             else
             {
-                console.addLine("checksum check timed out");
-                return false;
+                console.addLine("some devices failed to verify checksum...");
             }
 
             if (!await checkMalfucntion(console))
@@ -169,8 +164,7 @@ namespace unified_host
             }
             else
             {
-                console.addLine("reset device timed out");
-                return false;
+                console.addLine("some devices failed to reset...");
             }
 
             if (!await checkMalfucntion(console))
