@@ -15,13 +15,14 @@ namespace unified_host
         public UInt32 totalCheckSum; //checksum of all packets
         public List<byte[]> packetsOut; //list of packets to send
         public int port; //port to connect to
-        public IPAddress ipTarget; //target IP address
         public IPAddress ipHost; //host IP address
         public UdpClient udpServer; //UDP client
         public IPEndPoint remoteEndPoint; //remote endpoint
         public byte[] calledBackReponse; //actual response from server at any point
         public bool success = false; //success flag on each command sent
-
+        public int pairedDevices = 2;
+        public Dictionary<IPAddress, string> devicesResponses = new Dictionary<IPAddress, string>(); //dictionary of devices and their responses
+        public IPAddress[] malfuntioning = [];
         public struct UdpState
         {
             public UdpClient u;
@@ -29,12 +30,11 @@ namespace unified_host
             public IPEndPoint e;
         }
 
-        public socketServer(int port, string remoteip)
+        public socketServer(int port)
         {
             this.port = port;
-            this.ipTarget = IPAddress.Parse(remoteip);
             this.ipHost = GetEthernetIPv4Address();
-            remoteEndPoint = new IPEndPoint(ipTarget, port);
+            remoteEndPoint = new IPEndPoint(IPAddress.Broadcast, port);
             udpServer = new UdpClient(port);
         }
         
@@ -71,8 +71,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if(!await checkMalfucntion(console))
+                {
+                return false;
+            }
 
             console.addLine("sending LED ON ask..."); //send LED ON to test LED
             await operationHandler(1, console);
@@ -86,8 +88,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
 
             console.addLine("sending lED OFF ask..."); //send LED OFF to double check LED
             await operationHandler(2, console);
@@ -101,8 +105,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
 
             console.addLine("sending erase and boot ask..."); //send erase and boot to prepare for flash write
             await operationHandler(3, console);
@@ -116,8 +122,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
 
             console.addLine("sending flash write sequence..."); //send flash write to write new program sequence
             await operationHandler(4, console);
@@ -131,8 +139,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
 
             console.addLine($"sending checksum check... value of checksum calculated is: 0x{BitConverter.ToString(BitConverter.GetBytes(totalCheckSum))}"); //send checksum check to verify flash write
             await operationHandler(5, console);
@@ -146,8 +156,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
 
             console.addLine("sending reset device..."); //reset device to boot into new program
             await operationHandler(6, console);
@@ -161,8 +173,10 @@ namespace unified_host
                 return false;
             }
 
-            success = false;
-            await Task.Delay(2000);
+            if (!await checkMalfucntion(console))
+            {
+                return false;
+            }
             //sequence completed
             console.addLine("sequence complete...poggers" + Environment.NewLine + "device should be reset and running new program" + Environment.NewLine + "i am not in danger I AM THE DANGER. I AM THE ONE WHO KNOCKS");
             return true;
@@ -170,7 +184,7 @@ namespace unified_host
 
         //-----------------------------------------------handles logic of making UDP packets and expected responses---------------------------------------------//
 
-        public async Task verifyDeviceConnection()
+        public async Task verifyDeviceConnection(sequenceConsole console)
         {
             byte[] ipAddressBytes = ipHost.GetAddressBytes();
             byte[] message = { 0x00, 0x3f };
@@ -186,6 +200,8 @@ namespace unified_host
             byte[] requestLED2 = { 0x00, 0x11 };
             byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
             success = await handleRequest(requestLED2, responseLED2, 2000);
+            pairedDevices = devicesResponses.Count;
+            console.addLine($"device connected successfully, {pairedDevices} devices found");
         }
 
         public async Task operationHandler(int opcode, sequenceConsole console)
@@ -253,10 +269,21 @@ namespace unified_host
             }
         }
 
+        public async Task<bool> checkMalfucntion(sequenceConsole console)
+        {
+            if (pairedDevices == 0)
+            {
+                console.addLine("device not responding, check connection and try again");
+                return false;
+            }
+            success = false;
+            await Task.Delay(2000);
+            return true;
+        }
        //------------------------------------------------------for send and receive requests functionallity-----------------------------------------------//
       //------------------------------------------------------this is legacy code now do not touch this pls----------------------------------------------//
 
-            public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000, sequenceConsole console = null)
+        public async Task<bool> handleRequest(byte[] message, byte[] response, int timeoutMilliseconds = 5000, sequenceConsole console = null)
         {
             sendMessage(message);
             if (response == null)
@@ -269,8 +296,9 @@ namespace unified_host
             s.u = udpServer;
 
             int attemptNumber = 0;
-            trial:
-            if(attemptNumber == 5)
+        trial:
+            bool tryAgain = false;
+            if (attemptNumber == 5)
             {
                 return false;
             }
@@ -280,21 +308,30 @@ namespace unified_host
 
                 if (await Task.WhenAny(receiveTask, Task.Delay(timeoutMilliseconds, cts.Token)) == receiveTask)
                 {
-                    if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) != BitConverter.ToString(response))
+                    foreach(IPAddress currip in devicesResponses.Keys)
                     {
-                        if (console != null)
-                            console.addLine($"response not matched, retrying... attempt({attemptNumber+1}/5)");
-                        sendMessage(message);
+                        if (devicesResponses[currip] != BitConverter.ToString(response))
+                        {
+                            if (attemptNumber == 4)
+                            {
+                                malfuntioning.Append(currip);
+                                devicesResponses.Remove(currip);
+                                pairedDevices--;
+                            }
+                            if (console != null)
+                                console.addLine($"response not matched, retrying... attempt({attemptNumber + 1}/5)");
+                            tryAgain = true;
+                        }
+                    }
+                    if(tryAgain)
+                    {
                         attemptNumber++;
                         goto trial;
                     }
-                    else if(calledBackReponse != null && BitConverter.ToString(calledBackReponse) == BitConverter.ToString(response))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
-                return false;
             }
+        return false;
         }
 
         public void sendMessage(byte[] message)
@@ -307,13 +344,24 @@ namespace unified_host
             try
             {
                 UdpClient u = state.u;
-                IPEndPoint e = state.e;
+                IPEndPoint e = new IPEndPoint(IPAddress.Any, port); // Initialize with IPAddress.Any
 
                 while (!token.IsCancellationRequested)
                 {
                     if (u.Available > 0)
                     {
-                        calledBackReponse = u.Receive(ref e);
+                        int responsesGot = 0;
+                        while(responsesGot < pairedDevices)
+                        {
+                            calledBackReponse = u.Receive(ref e);
+                            IPAddress ip = e.Address;
+                            if(ip.ToString() == ipHost.ToString())
+                            {
+                                continue;
+                            }
+                            devicesResponses[ip] = BitConverter.ToString(calledBackReponse);
+                            responsesGot++;
+                        }
                         break;
                     }
                 }

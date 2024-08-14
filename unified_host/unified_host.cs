@@ -32,9 +32,7 @@ namespace unified_host
 
         //port and ip reading and connection
         private Label portLabel;
-        private Label remoteIpLabel;
         private TextBox portInput;
-        private TextBox remoteIpInput;
         private Button confirmPort;
         private Button start;
         private socketServer server;
@@ -115,17 +113,6 @@ namespace unified_host
             portInput.Location = new Point(50, 10);
             portInput.Size = new Size(100, 20);
 
-            //label of the remote ip address
-            remoteIpLabel = new Label();
-            remoteIpLabel.Location = new Point(170, 15);
-            remoteIpLabel.Text = "Remote IP Address:";
-            remoteIpLabel.Size = new Size(200, 20);
-
-            //ip address input field of the chip
-            remoteIpInput = new TextBox();
-            remoteIpInput.Location = new Point(290, 10);
-            remoteIpInput.Size = new Size(130, 20);
-
             //connect on selected port
             confirmPort = new Button();
             confirmPort.Text = "Connect";
@@ -152,9 +139,7 @@ namespace unified_host
             this.Controls.Add(currentPageIndicator);
             this.Controls.Add(clearButton);
             this.Controls.Add(browseButton);
-            this.Controls.Add(remoteIpInput);
             this.Controls.Add(portLabel);
-            this.Controls.Add(remoteIpLabel);
 
             defaultFont = fileContentTextBox.Font;
         }
@@ -293,17 +278,14 @@ namespace unified_host
                 }
 
                 int Sport = 65500;
-                string remoteIp = "192.168.1.71";
                 string hostIp = "192.168.1.2";
                 if (portInput.Text != "")
                     Sport = int.Parse(portInput.Text);
-                if (remoteIpInput.Text != "")
-                    remoteIp = remoteIpInput.Text;
 
-                server = new socketServer(Sport, remoteIp);
+                server = new socketServer(Sport);
 
                 //test if devide is connected and respondes to commands
-                await server.verifyDeviceConnection();
+                await server.verifyDeviceConnection(console);
 
                 if (server.success)
                 {
