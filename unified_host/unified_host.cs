@@ -328,7 +328,7 @@ namespace unified_host
                 return;
             }
 
-            console.addLine("starting programming sequence...");
+            console.addLine($"starting programming sequence on port:{portInput.Text}...");
             await Task.Delay(2000);
             Dictionary<IPAddress,sequenceConsole> devicesConsoles = await server.programSequence(console);
             await Task.Delay(2000);

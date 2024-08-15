@@ -160,6 +160,8 @@ namespace unified_host
             byte[] responseWake = null;
             await handleRequest(requestWake, responseWake, 2000);
 
+            await Task.Delay(1000);
+
             byte[] requestLED2 = { 0x00, 0x11 };
             byte[] responseLED2 = { 0x00, 0x0E, 0x00, 0x11 };
             await handleRequest(requestLED2, responseLED2, 2000);
@@ -303,6 +305,7 @@ namespace unified_host
                 if (devicesResponses[currip] != BitConverter.ToString(response))
                 {
                     malfuntioning.Append(currip);
+                    devicesConsoles[currip].addLine("device malfunctioned or stopped responding...");
                     devicesResponses.Remove(currip);
                     pairedDevices--;
                 }
@@ -327,15 +330,16 @@ namespace unified_host
                     if (u.Available > 0)
                     {
                         responsesGot = 0;
-                        while(responsesGot < pairedDevices)
+                        while(responsesGot < pairedDevices || pairedDevices == 0)
                         {
                             calledBackReponse = u.Receive(ref e);
                             IPAddress ip = e.Address;
-                            if(ip.ToString() == ipHost.ToString())
+                            if(ip.ToString() == ipHost.ToString() || ip == IPAddress.Loopback)
                             {
                                 continue;
                             }
-                            devicesResponses[ip] = BitConverter.ToString(calledBackReponse);
+                            if(!malfuntioning.Contains(ip))
+                                devicesResponses[ip] = BitConverter.ToString(calledBackReponse);
                             responsesGot++;
                         }
                         break;
